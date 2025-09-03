@@ -1,0 +1,19 @@
+<h2>Employee Registration</h2>
+
+<form method="POST" action="/register" class="card login-card">
+  <% /* flash messages handled in layout */ %>
+
+  <input type="text" name="name" placeholder="Full Name" required>
+  <input type="email" name="email" placeholder="Email" required>
+  <input type="password" name="password" placeholder="Password" required>
+
+  <label>Role</label>
+  <select name="role" required>
+    <option value="employee" selected>Employee</option>
+    <option value="manager">Manager</option>
+  </select>
+
+  <button type="submit" class="btn">Register</button>
+</form>
+
+<p style="margin-top:10px;">Already have an account? <a href="/login">Login</a></p>

@@ -1,0 +1,22 @@
+<div class="card">
+  <h2>Submit Leave Request</h2>
+  <form method="POST" action="/leave">
+    <label>Leave Type</label>
+    <select name="type" required>
+      <option value="Vacation">Vacation</option>
+      <option value="Sick">Sick</option>
+      <option value="Other">Other</option>
+    </select>
+
+    <label>Start Date</label>
+    <input type="date" name="start_date" required>
+
+    <label>End Date</label>
+    <input type="date" name="end_date" required>
+
+    <label>Reason</label>
+    <textarea name="reason" required></textarea>
+
+    <button type="submit" class="btn">Submit</button>
+  </form>
+</div>

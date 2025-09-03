@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title || "Leave App" %></title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="logo">LeaveApp</div>
+    <% if (user) { %>
+      <div class="nav-links">
+        <% if (user.role === "employee") { %>
+          <a href="/dashboard">Dashboard</a>
+          <a href="/leave">Request Leave</a>
+        <% } else { %>
+          <a href="/manager">Manager Dashboard</a>
+        <% } %>
+        <a href="/logout" class="logout-btn">Logout</a>
+      </div>
+    <% } else { %>
+      <div class="nav-links">
+        <a href="/login">Login</a>
+        <a href="/register">Register</a>
+      </div>
+    <% } %>
+  </nav>
+
+  <div class="container">
+    <% if (success && success.length > 0) { %>
+  <div class="flash success">
+    <%= success[0] %>
+  </div>
+<% } %>
+<% if (error && error.length > 0) { %>
+  <div class="flash error">
+    <%= error[0] %>
+  </div>
+<% } %>
+
+    <%- body %>  <!-- ✅ express-ejs-layouts will inject content here -->
+  </div>
+</body>
+</html>

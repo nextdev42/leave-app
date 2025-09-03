@@ -1,0 +1,22 @@
+<h2>Welcome, <%= user.name %> 👋</h2>
+<a href="/leave" class="btn">Request New Leave</a>
+
+<h3>Your Leave Requests</h3>
+<table>
+  <tr>
+    <th>Type</th>
+    <th>Dates</th>
+    <th>Reason</th>
+    <th>Status</th>
+    <th>Manager Comment</th>
+  </tr>
+  <% leaves.forEach(leave => { %>
+    <tr>
+      <td><%= leave.type %></td>
+      <td><%= leave.start_date %> → <%= leave.end_date %></td>
+      <td><%= leave.reason %></td>
+      <td class="<%= leave.status.toLowerCase() %>"><%= leave.status %></td>
+      <td><%= leave.manager_comment || "-" %></td>
+    </tr>
+  <% }) %>
+</table>
