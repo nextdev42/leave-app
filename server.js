@@ -95,16 +95,37 @@ app.get("/login", (req, res) => {
   res.render("login", { error: null, title: "Login", user: null });
 });
 
-app.post("/login", async (req, res) => {
+app.post("/login", (req, res) => {
   const { email, password } = req.body;
-  const result = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
-  const user = result.rows[0];
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.render("login", { error: "Invalid email or password", title: "Login", user: null });
+
+  if (!email || !password) {
+    req.flash("error", "Email and password are required");
+    return res.redirect("/login");
   }
-  req.session.user = user;
-  res.redirect("/");
+
+  db.get("SELECT * FROM users WHERE email = ?", [email], (err, user) => {
+    if (err) {
+      console.error(err);
+      req.flash("error", "Something went wrong. Please try again.");
+      return res.redirect("/login");
+    }
+
+    if (!user) {
+      req.flash("error", "No account found with that email");
+      return res.redirect("/login");
+    }
+
+    if (!bcrypt.compareSync(password, user.password)) {
+      req.flash("error", "Incorrect password");
+      return res.redirect("/login");
+    }
+
+    req.session.user = user;
+    req.flash("success", `Welcome back, ${user.name}!`);
+    res.redirect("/");
+  });
 });
+
 
 // Logout
 app.get("/logout", (req, res) => {
@@ -194,3 +215,4 @@ app.post("/manager/action/:id", requireLogin, async (req, res) => {
 app.listen(process.env.PORT || 3000, () => {
   console.log(`Server running on http://localhost:${process.env.PORT || 3000}`);
 });
+
