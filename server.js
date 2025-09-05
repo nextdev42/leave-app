@@ -5,31 +5,34 @@ const bodyParser = require("body-parser");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
+const path = require("path");
 const expressLayouts = require("express-ejs-layouts");
 const flash = require("connect-flash");
 
 const app = express();
 
-// ---------- Postgres Connection ----------
+// ---------------- Postgres Pool ----------------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
-// ---------- Middleware ----------
+// ---------------- Middleware ----------------
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(session({
   secret: process.env.SESSION_SECRET || "leave-secret",
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
 }));
 app.use(flash());
 app.use(expressLayouts);
 app.set("view engine", "ejs");
 app.set("layout", "layout");
 
-// Make flash and user available in all views
+// Make flash & user available in all views
 app.use((req, res, next) => {
   res.locals.success = req.flash("success");
   res.locals.error = req.flash("error");
@@ -37,8 +40,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// ---------- Create Tables ----------
-async function createTables() {
+// ---------------- Auth Middleware ----------------
+function requireLogin(req, res, next) {
+  if (!req.session.user) return res.redirect("/login");
+  next();
+}
+
+// ---------------- Database Setup ----------------
+async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
@@ -52,12 +61,12 @@ async function createTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS leave_requests (
       id SERIAL PRIMARY KEY,
-      user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      user_id INT REFERENCES users(id),
       start_date DATE NOT NULL,
       end_date DATE NOT NULL,
       reason TEXT NOT NULL,
       type TEXT NOT NULL,
-      status TEXT DEFAULT 'Pending' NOT NULL,
+      status TEXT DEFAULT 'Pending',
       manager_comment TEXT
     );
   `);
@@ -73,15 +82,9 @@ async function createTables() {
     console.log("Default manager created: manager@example.com / admin123");
   }
 }
-createTables();
+initDB();
 
-// ---------- Auth Middleware ----------
-function requireLogin(req, res, next) {
-  if (!req.session.user) return res.redirect("/login");
-  next();
-}
-
-// ---------- Routes ----------
+// ---------------- Routes ----------------
 
 // Home redirect
 app.get("/", (req, res) => {
@@ -90,25 +93,21 @@ app.get("/", (req, res) => {
   res.redirect("/dashboard");
 });
 
-// Login
+// ---------------- Login ----------------
 app.get("/login", (req, res) => {
-  res.render("login", { error: null, title: "Login", user: null });
+  res.render("login", { error: req.flash("error"), success: req.flash("success"), title: "Login" });
 });
 
-app.post("/login", (req, res) => {
+app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-
   if (!email || !password) {
     req.flash("error", "Email and password are required");
     return res.redirect("/login");
   }
 
-  db.get("SELECT * FROM users WHERE email = ?", [email], (err, user) => {
-    if (err) {
-      console.error(err);
-      req.flash("error", "Something went wrong. Please try again.");
-      return res.redirect("/login");
-    }
+  try {
+    const result = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
+    const user = result.rows[0];
 
     if (!user) {
       req.flash("error", "No account found with that email");
@@ -123,53 +122,71 @@ app.post("/login", (req, res) => {
     req.session.user = user;
     req.flash("success", `Welcome back, ${user.name}!`);
     res.redirect("/");
-  });
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Something went wrong. Try again.");
+    res.redirect("/login");
+  }
 });
 
-
-// Logout
+// ---------------- Logout ----------------
 app.get("/logout", (req, res) => {
   req.session.destroy();
   res.redirect("/login");
 });
 
-// Register
+// ---------------- Register ----------------
 app.get("/register", (req, res) => {
-  res.render("register", { error: null, title: "Register", user: null });
+  res.render("register", { error: req.flash("error"), success: req.flash("success"), title: "Register" });
 });
 
 app.post("/register", async (req, res) => {
   const { name, email, password, role } = req.body;
+
   if (!name || !email || !password || !role) {
     req.flash("error", "All fields are required");
     return res.redirect("/register");
   }
 
-  const existing = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
-  if (existing.rows.length > 0) {
-    return res.render("register", { error: "Email already exists", title: "Register", user: null });
+  try {
+    const exists = await pool.query("SELECT * FROM users WHERE email=$1", [email]);
+    if (exists.rows.length > 0) {
+      req.flash("error", "Email already exists");
+      return res.redirect("/register");
+    }
+
+    const hashed = bcrypt.hashSync(password, 10);
+    const result = await pool.query(
+      "INSERT INTO users (name,email,password,role) VALUES ($1,$2,$3,$4) RETURNING *",
+      [name, email, hashed, role]
+    );
+
+    req.session.user = result.rows[0];
+    req.flash("success", `Registration successful! Welcome ${result.rows[0].name}`);
+    if (role === "manager") return res.redirect("/manager");
+    res.redirect("/dashboard");
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Something went wrong");
+    res.redirect("/register");
   }
-
-  const hashed = bcrypt.hashSync(password, 10);
-  const insert = await pool.query(
-    "INSERT INTO users (name,email,password,role) VALUES ($1,$2,$3,$4) RETURNING *",
-    [name, email, hashed, role]
-  );
-
-  req.session.user = insert.rows[0];
-  req.flash("success", "Registration successful! Welcome " + insert.rows[0].name);
-  if (insert.rows[0].role === "manager") return res.redirect("/manager");
-  res.redirect("/dashboard");
 });
 
-// Employee dashboard
+// ---------------- Employee Dashboard ----------------
 app.get("/dashboard", requireLogin, async (req, res) => {
   if (req.session.user.role !== "employee") return res.redirect("/");
-  const result = await pool.query("SELECT * FROM leave_requests WHERE user_id=$1", [req.session.user.id]);
-  res.render("dashboard", { user: req.session.user, leaves: result.rows, title: "Dashboard" });
+
+  try {
+    const result = await pool.query("SELECT * FROM leave_requests WHERE user_id=$1", [req.session.user.id]);
+    res.render("dashboard", { user: req.session.user, leaves: result.rows, title: "Dashboard" });
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Could not load leave requests");
+    res.redirect("/");
+  }
 });
 
-// Leave request form
+// ---------------- Leave Form ----------------
 app.get("/leave", requireLogin, (req, res) => {
   if (req.session.user.role !== "employee") return res.redirect("/");
   res.render("leave-form", { user: req.session.user, title: "Request Leave" });
@@ -177,42 +194,60 @@ app.get("/leave", requireLogin, (req, res) => {
 
 app.post("/leave", requireLogin, async (req, res) => {
   const { start_date, end_date, reason, type } = req.body;
-  await pool.query(
-    "INSERT INTO leave_requests (user_id,start_date,end_date,reason,type) VALUES ($1,$2,$3,$4,$5)",
-    [req.session.user.id, start_date, end_date, reason, type]
-  );
-  req.flash("success", "Leave submitted successfully!");
-  res.redirect("/dashboard");
+  try {
+    await pool.query(
+      "INSERT INTO leave_requests (user_id,start_date,end_date,reason,type) VALUES ($1,$2,$3,$4,$5)",
+      [req.session.user.id, start_date, end_date, reason, type]
+    );
+    req.flash("success", "Leave submitted successfully!");
+    res.redirect("/dashboard");
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Could not submit leave");
+    res.redirect("/leave");
+  }
 });
 
-// Manager dashboard
+// ---------------- Manager Dashboard ----------------
 app.get("/manager", requireLogin, async (req, res) => {
   if (req.session.user.role !== "manager") return res.redirect("/");
-  const result = await pool.query(`
-    SELECT lr.*, u.name AS employee_name
-    FROM leave_requests lr
-    JOIN users u ON lr.user_id = u.id
-  `);
-  res.render("manager", { user: req.session.user, leaves: result.rows, title: "Manager Dashboard" });
+
+  try {
+    const result = await pool.query(`
+      SELECT lr.*, u.name as employee_name
+      FROM leave_requests lr
+      JOIN users u ON lr.user_id = u.id
+      ORDER BY lr.id DESC
+    `);
+    res.render("manager", { user: req.session.user, leaves: result.rows, title: "Manager Dashboard" });
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Could not load leave requests");
+    res.redirect("/");
+  }
 });
 
-// Approve/Reject leave
 app.post("/manager/action/:id", requireLogin, async (req, res) => {
   if (req.session.user.role !== "manager") return res.redirect("/");
+
   const { id } = req.params;
   const { action, comment } = req.body;
   const status = action === "approve" ? "Approved" : "Rejected";
 
-  await pool.query(
-    "UPDATE leave_requests SET status=$1, manager_comment=$2 WHERE id=$3",
-    [status, comment, id]
-  );
-  req.flash("success", `Leave ${status.toLowerCase()} successfully!`);
-  res.redirect("/manager");
+  try {
+    await pool.query(
+      "UPDATE leave_requests SET status=$1, manager_comment=$2 WHERE id=$3",
+      [status, comment, id]
+    );
+    req.flash("success", `Leave ${status.toLowerCase()} successfully!`);
+    res.redirect("/manager");
+  } catch (err) {
+    console.error(err);
+    req.flash("error", "Could not update leave request");
+    res.redirect("/manager");
+  }
 });
 
-// Start server
-app.listen(process.env.PORT || 3000, () => {
-  console.log(`Server running on http://localhost:${process.env.PORT || 3000}`);
-});
-
+// ---------------- Start Server ----------------
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
