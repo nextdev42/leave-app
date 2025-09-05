@@ -10,10 +10,13 @@
     <th>Status</th>
     <th>Manager Comment</th>
   </tr>
-  <% leaves.forEach(leave => { %>
+  <% leaves.forEach(leave => { 
+       const start = new Date(leave.start_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+       const end = new Date(leave.end_date).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+  %>
     <tr>
       <td><%= leave.type %></td>
-      <td><%= leave.start_date %> → <%= leave.end_date %></td>
+      <td><%= start %> → <%= end %></td>
       <td><%= leave.reason %></td>
       <td class="<%= leave.status.toLowerCase() %>"><%= leave.status %></td>
       <td><%= leave.manager_comment || "-" %></td>
