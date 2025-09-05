@@ -9,10 +9,10 @@
     </select>
 
     <label>Start Date</label>
-    <input type="date" name="start_date" required>
+    <input type="date" name="start_date" id="start_date" required>
 
     <label>End Date</label>
-    <input type="date" name="end_date" required>
+    <input type="date" name="end_date" id="end_date" required>
 
     <label>Reason</label>
     <textarea name="reason" required></textarea>
@@ -20,3 +20,12 @@
     <button type="submit" class="btn">Submit</button>
   </form>
 </div>
+
+<script>
+  const startInput = document.getElementById('start_date');
+  const endInput = document.getElementById('end_date');
+
+  startInput.addEventListener('change', () => {
+    endInput.min = startInput.value; // End date cannot be before start date
+  });
+</script>
